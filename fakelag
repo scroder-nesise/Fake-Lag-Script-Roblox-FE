@@ -1,0 +1,455 @@
+-- =============================================
+-- FAKE LAG / PING SPOOFER V1.0
+-- Clean Modern GUI | Fully Customizable 
+-- keyless as always
+-- =============================================
+
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+
+local player = Players.LocalPlayer
+local enabled = false
+
+-- Main Lag Settings
+local lagStrength = 5
+local teleportStuds = 3.0
+local teleportJitter = 0.18
+local useRandomJitter = true
+local autoRespawnFix = true
+local fakeVelocity = false
+local velocityAmount = 25
+local fakeRotation = false
+local rotationDegrees = 8.0
+local burstMode = false
+local burstCount = 3
+local lagMode = "Rubberband"
+
+-- Freeze Feature Settings
+local freezeEnabled = false
+local freezeDuration = 6.0      -- How long the character stays frozen
+local freezeInterval = 3.0      -- How many seconds after the previous freeze ends before the next one occurs
+
+-- Create clean GUI
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "FakeLagSpoofer"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = player:WaitForChild("PlayerGui")
+
+local mainFrame = Instance.new("Frame")
+mainFrame.Size = UDim2.new(0, 380, 0, 520)
+mainFrame.Position = UDim2.new(0.5, -190, 0.5, -260)
+mainFrame.BackgroundColor3 = Color3.fromRGB(24, 24, 28)
+mainFrame.BorderSizePixel = 0
+mainFrame.Active = true
+mainFrame.Draggable = true
+mainFrame.Parent = screenGui
+
+local corner = Instance.new("UICorner")
+corner.CornerRadius = UDim.new(0, 12)
+corner.Parent = mainFrame
+
+local stroke = Instance.new("UIStroke")
+stroke.Thickness = 1.5
+stroke.Color = Color3.fromRGB(60, 60, 70)
+stroke.Parent = mainFrame
+
+-- Title bar
+local titleBar = Instance.new("Frame")
+titleBar.Size = UDim2.new(1, 0, 0, 45)
+titleBar.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
+titleBar.BorderSizePixel = 0
+titleBar.Parent = mainFrame
+
+local titleCorner = Instance.new("UICorner")
+titleCorner.CornerRadius = UDim.new(0, 12)
+titleCorner.Parent = titleBar
+
+local titleLabel = Instance.new("TextLabel")
+titleLabel.Size = UDim2.new(1, -50, 1, 0)
+titleLabel.BackgroundTransparency = 1
+titleLabel.Text = "Fake Lag / Ping Spoofer V1.0"
+titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+titleLabel.TextScaled = true
+titleLabel.Font = Enum.Font.GothamBold
+titleLabel.Parent = titleBar
+
+-- Close button (FIXED)
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size = UDim2.new(0, 35, 0, 35)
+closeBtn.Position = UDim2.new(1, -40, 0, 5)
+closeBtn.BackgroundColor3 = Color3.fromRGB(232, 76, 76)
+closeBtn.Text = "X"
+closeBtn.TextColor3 = Color3.new(1, 1, 1)
+closeBtn.TextScaled = true
+closeBtn.Font = Enum.Font.GothamBold
+closeBtn.Parent = titleBar
+
+local closeCorner = Instance.new("UICorner")
+closeCorner.CornerRadius = UDim.new(0, 8)
+closeCorner.Parent = closeBtn
+
+-- Toggle Button
+local toggleBtn = Instance.new("TextButton")
+toggleBtn.Size = UDim2.new(0.92, 0, 0, 45)
+toggleBtn.Position = UDim2.new(0.04, 0, 0, 55)
+toggleBtn.BackgroundColor3 = Color3.fromRGB(232, 76, 76)
+toggleBtn.Text = "ENABLE FAKE LAG"
+toggleBtn.TextColor3 = Color3.new(1, 1, 1)
+toggleBtn.TextScaled = true
+toggleBtn.Font = Enum.Font.GothamBold
+toggleBtn.Parent = mainFrame
+
+local toggleCorner = Instance.new("UICorner")
+toggleCorner.CornerRadius = UDim.new(0, 10)
+toggleCorner.Parent = toggleBtn
+
+-- Scrollable Settings
+local scrollFrame = Instance.new("ScrollingFrame")
+scrollFrame.Size = UDim2.new(0.92, 0, 0, 340)
+scrollFrame.Position = UDim2.new(0.04, 0, 0, 110)
+scrollFrame.BackgroundTransparency = 1
+scrollFrame.BorderSizePixel = 0
+scrollFrame.ScrollBarThickness = 6
+scrollFrame.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 90)
+scrollFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+scrollFrame.Parent = mainFrame
+
+local listLayout = Instance.new("UIListLayout")
+listLayout.Padding = UDim.new(0, 6)
+listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+listLayout.Parent = scrollFrame
+
+-- Helper: Create setting row (number input)
+local function createSetting(name, defaultValue, callback)
+    local row = Instance.new("Frame")
+    row.Size = UDim2.new(1, 0, 0, 38)
+    row.BackgroundTransparency = 1
+    row.Parent = scrollFrame
+
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(0.62, 0, 1, 0)
+    label.BackgroundTransparency = 1
+    label.Text = name
+    label.TextColor3 = Color3.fromRGB(200, 200, 210)
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.Font = Enum.Font.Gotham
+    label.TextScaled = true
+    label.Parent = row
+
+    local box = Instance.new("TextBox")
+    box.Size = UDim2.new(0.35, 0, 0.78, 0)
+    box.Position = UDim2.new(0.65, 0, 0.11, 0)
+    box.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
+    box.Text = tostring(defaultValue)
+    box.TextColor3 = Color3.new(1, 1, 1)
+    box.TextScaled = true
+    box.Font = Enum.Font.Gotham
+    box.Parent = row
+
+    local boxCorner = Instance.new("UICorner")
+    boxCorner.CornerRadius = UDim.new(0, 6)
+    boxCorner.Parent = box
+
+    box.FocusLost:Connect(function()
+        local num = tonumber(box.Text)
+        if num then
+            callback(num)
+        else
+            box.Text = tostring(defaultValue)
+        end
+    end)
+end
+
+-- Helper: Toggle row
+local function createToggle(name, default, callback)
+    local row = Instance.new("Frame")
+    row.Size = UDim2.new(1, 0, 0, 38)
+    row.BackgroundTransparency = 1
+    row.Parent = scrollFrame
+
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(0.62, 0, 1, 0)
+    label.BackgroundTransparency = 1
+    label.Text = name
+    label.TextColor3 = Color3.fromRGB(200, 200, 210)
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.Font = Enum.Font.Gotham
+    label.TextScaled = true
+    label.Parent = row
+
+    local toggleBtn = Instance.new("TextButton")
+    toggleBtn.Size = UDim2.new(0.35, 0, 0.78, 0)
+    toggleBtn.Position = UDim2.new(0.65, 0, 0.11, 0)
+    toggleBtn.BackgroundColor3 = default and Color3.fromRGB(0, 170, 100) or Color3.fromRGB(232, 76, 76)
+    toggleBtn.Text = default and "ON" or "OFF"
+    toggleBtn.TextColor3 = Color3.new(1, 1, 1)
+    toggleBtn.TextScaled = true
+    toggleBtn.Font = Enum.Font.GothamBold
+    toggleBtn.Parent = row
+
+    local tCorner = Instance.new("UICorner")
+    tCorner.CornerRadius = UDim.new(0, 6)
+    tCorner.Parent = toggleBtn
+
+    toggleBtn.MouseButton1Click:Connect(function()
+        default = not default
+        toggleBtn.Text = default and "ON" or "OFF"
+        toggleBtn.BackgroundColor3 = default and Color3.fromRGB(0, 170, 100) or Color3.fromRGB(232, 76, 76)
+        callback(default)
+    end)
+end
+
+-- Main Lag Settings
+createSetting("Lag Strength (1-10)", lagStrength, function(v) lagStrength = math.clamp(v, 1, 10) end)
+createSetting("Teleport Studs", teleportStuds, function(v) teleportStuds = math.clamp(v, 0.1, 15) end)
+createSetting("Teleport Jitter (sec)", teleportJitter, function(v) teleportJitter = math.clamp(v, 0.05, 2) end)
+createSetting("Fake Velocity Amount", velocityAmount, function(v) velocityAmount = math.clamp(v, 5, 60) end)
+createSetting("Rotation Degrees", rotationDegrees, function(v) rotationDegrees = math.clamp(v, 0, 45) end)
+createSetting("Burst Count", burstCount, function(v) burstCount = math.clamp(v, 1, 8) end)
+
+createToggle("Random Jitter", useRandomJitter, function(v) useRandomJitter = v end)
+createToggle("Auto Respawn Fix", autoRespawnFix, function(v) autoRespawnFix = v end)
+createToggle("Fake Velocity", fakeVelocity, function(v) fakeVelocity = v end)
+createToggle("Fake Rotation", fakeRotation, function(v) fakeRotation = v end)
+createToggle("Burst Mode", burstMode, function(v) burstMode = v end)
+
+-- Freeze Feature Section
+local freezeLabel = Instance.new("TextLabel")
+freezeLabel.Size = UDim2.new(1, 0, 0, 25)
+freezeLabel.BackgroundTransparency = 1
+freezeLabel.Text = "=== FREEZE FEATURE ==="
+freezeLabel.TextColor3 = Color3.fromRGB(100, 200, 255)
+freezeLabel.TextScaled = true
+freezeLabel.Font = Enum.Font.GothamBold
+freezeLabel.Parent = scrollFrame
+
+createSetting("Freeze Lasting (seconds)", freezeDuration, function(v) freezeDuration = math.clamp(v, 0.5, 20) end)
+createSetting("Freeze Occur After (seconds)", freezeInterval, function(v) freezeInterval = math.clamp(v, 0.5, 15) end)
+
+createToggle("Enable Freeze", freezeEnabled, function(v) freezeEnabled = v end)
+
+-- Lag Mode selector
+local modes = {"Rubberband", "Burst", "VelocityFreeze"}
+local currentModeIndex = 1
+
+local modeRow = Instance.new("Frame")
+modeRow.Size = UDim2.new(1, 0, 0, 42)
+modeRow.BackgroundTransparency = 1
+modeRow.Parent = scrollFrame
+
+local modeLabel = Instance.new("TextLabel")
+modeLabel.Size = UDim2.new(0.62, 0, 1, 0)
+modeLabel.BackgroundTransparency = 1
+modeLabel.Text = "Lag Mode (Click to Cycle)"
+modeLabel.TextColor3 = Color3.fromRGB(200, 200, 210)
+modeLabel.TextXAlignment = Enum.TextXAlignment.Left
+modeLabel.Font = Enum.Font.Gotham
+modeLabel.TextScaled = true
+modeLabel.Parent = modeRow
+
+local modeValue = Instance.new("TextButton")
+modeValue.Size = UDim2.new(0.35, 0, 0.78, 0)
+modeValue.Position = UDim2.new(0.65, 0, 0.11, 0)
+modeValue.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
+modeValue.Text = modes[currentModeIndex]
+modeValue.TextColor3 = Color3.new(1, 1, 1)
+modeValue.TextScaled = true
+modeValue.Font = Enum.Font.Gotham
+modeValue.Parent = modeRow
+
+local modeCorner = Instance.new("UICorner")
+modeCorner.CornerRadius = UDim.new(0, 6)
+modeCorner.Parent = modeValue
+
+modeValue.MouseButton1Click:Connect(function()
+    currentModeIndex = currentModeIndex % #modes + 1
+    lagMode = modes[currentModeIndex]
+    modeValue.Text = lagMode
+    
+    if lagMode == "Rubberband" then
+        burstMode = false
+    elseif lagMode == "Burst" then
+        burstMode = true
+    elseif lagMode == "VelocityFreeze" then
+        fakeVelocity = true
+        burstMode = false
+    end
+end)
+
+-- Status label
+local statusLabel = Instance.new("TextLabel")
+statusLabel.Size = UDim2.new(0.92, 0, 0, 28)
+statusLabel.Position = UDim2.new(0.04, 0, 1, -38)
+statusLabel.BackgroundTransparency = 1
+statusLabel.Text = "Status: Ready"
+statusLabel.TextColor3 = Color3.fromRGB(120, 255, 120)
+statusLabel.TextScaled = true
+statusLabel.Font = Enum.Font.Gotham
+statusLabel.Parent = mainFrame
+
+-- Fake lag + Freeze engine
+local lagCoroutine
+
+local function startFakeLag()
+    if lagCoroutine then return end
+    
+    lagCoroutine = task.spawn(function()
+        local nextFreezeTime = tick() + freezeInterval
+        
+        while true do
+            if not enabled then
+                task.wait(0.2)
+                continue
+            end
+
+            local char = player.Character
+            if not char then 
+                task.wait(0.5)
+                continue 
+            end
+
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            local humanoid = char:FindFirstChild("Humanoid")
+            if not hrp or not humanoid then 
+                task.wait(0.5)
+                continue 
+            end
+
+            local originalCFrame = hrp.CFrame
+
+            -- Main Lag Modes
+            if lagMode == "Rubberband" or lagMode == "Burst" then
+                local jitterFactor = 1.15 + math.random() * 0.55
+                local offsetX = (math.random(-teleportStuds * 100, teleportStuds * 100) / 100) * jitterFactor
+                local offsetZ = (math.random(-teleportStuds * 100, teleportStuds * 100) / 100) * jitterFactor
+                hrp.CFrame = originalCFrame + Vector3.new(offsetX, 0, offsetZ)
+
+                local currentJitter = teleportJitter * (0.75 + math.random() * 1.05)
+                if useRandomJitter then
+                    currentJitter = currentJitter * (0.85 + math.random() * 0.65)
+                end
+                task.wait(currentJitter)
+
+                hrp.CFrame = originalCFrame
+
+                if fakeRotation then
+                    local rotY = math.rad((math.random() * 2 - 1) * rotationDegrees)
+                    hrp.CFrame = hrp.CFrame * CFrame.Angles(0, rotY, 0)
+                end
+
+                if lagMode == "Burst" or burstMode then
+                    for i = 1, burstCount - 1 do
+                        task.wait(currentJitter * 0.28)
+                        local bJitter = jitterFactor * 0.65
+                        local bOffsetX = (math.random(-teleportStuds * 50, teleportStuds * 50) / 100) * bJitter
+                        local bOffsetZ = (math.random(-teleportStuds * 50, teleportStuds * 50) / 100) * bJitter
+                        hrp.CFrame = originalCFrame + Vector3.new(bOffsetX, 0, bOffsetZ)
+                        task.wait(currentJitter * 0.18)
+                        hrp.CFrame = originalCFrame
+                    end
+                end
+
+            elseif lagMode == "VelocityFreeze" then
+                if fakeVelocity then
+                    hrp.AssemblyLinearVelocity = Vector3.new(
+                        math.random(-velocityAmount * 1.4, velocityAmount * 1.4),
+                        math.random(-5, 15),
+                        math.random(-velocityAmount * 1.4, velocityAmount * 1.4)
+                    )
+                end
+                task.wait(teleportJitter * (1.3 + math.random() * 1.1))
+                if hrp.AssemblyLinearVelocity then
+                    hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                end
+            end
+
+            -- Independent Freeze Feature
+            if freezeEnabled and tick() >= nextFreezeTime then
+                local origWalkSpeed = humanoid.WalkSpeed
+                local origJumpPower = humanoid.JumpPower
+                
+                humanoid.WalkSpeed = 0
+                humanoid.JumpPower = 0
+                hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                
+                task.wait(freezeDuration)
+                
+                humanoid.WalkSpeed = origWalkSpeed
+                humanoid.JumpPower = origJumpPower
+                
+                nextFreezeTime = tick() + freezeInterval
+            end
+
+            local baseWait = (1.55 / math.clamp(lagStrength, 1, 10)) * (0.85 + math.random() * 0.5)
+            task.wait(baseWait)
+        end
+    end)
+end
+
+local function stopFakeLag()
+    enabled = false
+    if lagCoroutine then
+        task.cancel(lagCoroutine)
+        lagCoroutine = nil
+    end
+end
+
+-- FIXED Close Button Logic
+closeBtn.MouseButton1Click:Connect(function()
+    stopFakeLag()           -- Properly stops the lag coroutine
+    screenGui:Destroy()     -- Removes the entire GUI
+end)
+
+-- Toggle logic
+toggleBtn.MouseButton1Click:Connect(function()
+    enabled = not enabled
+    
+    if enabled then
+        toggleBtn.BackgroundColor3 = Color3.fromRGB(0, 170, 100)
+        toggleBtn.Text = "DISABLE FAKE LAG"
+        statusLabel.Text = "Status: LAGGING ON | " .. lagMode
+        startFakeLag()
+    else
+        toggleBtn.BackgroundColor3 = Color3.fromRGB(232, 76, 76)
+        toggleBtn.Text = "ENABLE FAKE LAG"
+        statusLabel.Text = "Status: Stopped"
+        stopFakeLag()
+    end
+end)
+
+-- Auto re-attach on respawn
+player.CharacterAdded:Connect(function()
+    if enabled and autoRespawnFix then
+        task.wait(1)
+        if lagCoroutine then
+            stopFakeLag()
+            task.wait(0.3)
+            startFakeLag()
+        end
+    end
+end)
+
+-- Draggable
+local dragging = false
+local dragStart, startPos
+
+mainFrame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        dragStart = input.Position
+        startPos = mainFrame.Position
+    end
+end)
+
+mainFrame.InputChanged:Connect(function(input)
+    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+        local delta = input.Position - dragStart
+        mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = false
+    end
+end)
