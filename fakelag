@@ -1,25 +1,30 @@
 -- =============================================
---  FAKE LAG / PING SPOOFER  V2.0
---  Enhanced GUI | Bug Fixed | More Features
+--  FAKE LAG / PING SPOOFER  V3.0
+--  5 Modes | Precise + Rubberband + Burst + VelocityFreeze + Ghost
 --  keyless as always
 -- =============================================
 
 local Players          = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local TweenService     = game:GetService("TweenService")
+local RunService       = game:GetService("RunService")
 
 local player = Players.LocalPlayer
 
 -- ===== CONFIGURATION =====
 local TOGGLE_KEY  = Enum.KeyCode.F6   -- Hotkey to toggle lag on/off
+local CYCLE_KEY   = Enum.KeyCode.F7   -- Hotkey to cycle modes
 local FRAME_W     = 400
-local FRAME_H     = 570
+local FRAME_H     = 360
 local TITLE_H     = 48
 
 -- ===== STATE =====
 local enabled        = false
 local minimized      = false
 local lagThread      = nil
+local stealthMode    = false
+local activeStart    = 0
+local timerConn      = nil
 
 -- Main Lag Settings
 local lagStrength     = 5
@@ -33,7 +38,7 @@ local fakeRotation    = false
 local rotationDegrees = 8.0
 local burstMode       = false
 local burstCount      = 3
-local lagMode         = "Rubberband"
+local lagMode         = "Precise"
 
 -- Freeze Settings
 local freezeEnabled  = false
@@ -61,10 +66,11 @@ local C = {
 }
 
 local modeColors = {
-    Rubberband    = Color3.fromRGB(255, 130, 50),
-    Burst         = Color3.fromRGB(190, 60, 240),
-    VelocityFreeze= Color3.fromRGB(60, 155, 255),
-    Ghost         = Color3.fromRGB(160, 160, 185),
+    Precise        = Color3.fromRGB(50, 220, 160),
+    Rubberband     = Color3.fromRGB(255, 130, 50),
+    Burst          = Color3.fromRGB(190, 60, 240),
+    VelocityFreeze = Color3.fromRGB(60, 155, 255),
+    Ghost          = Color3.fromRGB(160, 160, 185),
 }
 
 -- ===== CLEANUP OLD GUI =====
@@ -112,7 +118,7 @@ titleBar.BorderSizePixel   = 0
 titleBar.ZIndex            = 2
 titleBar.Parent            = mainFrame
 
--- Patch square bottom of title bar (so it blends into content)
+-- Patch square bottom of title bar
 local titlePatch = Instance.new("Frame")
 titlePatch.Size            = UDim2.new(1, 0, 0, 14)
 titlePatch.Position        = UDim2.new(0, 0, 1, -14)
@@ -136,7 +142,7 @@ local titleLabel = Instance.new("TextLabel")
 titleLabel.Size               = UDim2.new(1, -120, 1, 0)
 titleLabel.Position           = UDim2.new(0, 32, 0, 0)
 titleLabel.BackgroundTransparency = 1
-titleLabel.Text               = "Fake Lag / Ping Spoofer  V2.0"
+titleLabel.Text               = "Fake Lag / Ping Spoofer  V3.0"
 titleLabel.TextColor3         = C.TextMain
 titleLabel.TextSize           = 14
 titleLabel.Font               = Enum.Font.GothamBold
@@ -163,7 +169,7 @@ local closeBtn = Instance.new("TextButton")
 closeBtn.Size              = UDim2.new(0, 30, 0, 30)
 closeBtn.Position          = UDim2.new(1, -39, 0.5, -15)
 closeBtn.BackgroundColor3  = C.Red
-closeBtn.Text              = "✕"
+closeBtn.Text              = "X"
 closeBtn.TextColor3        = Color3.new(1, 1, 1)
 closeBtn.TextSize          = 13
 closeBtn.Font              = Enum.Font.GothamBold
@@ -206,23 +212,23 @@ local modeLbl = Instance.new("TextLabel")
 modeLbl.Size                 = UDim2.new(0.52, 0, 1, 0)
 modeLbl.Position             = UDim2.new(0, 12, 0, 0)
 modeLbl.BackgroundTransparency = 1
-modeLbl.Text                 = "⚡  Lag Mode  (click to cycle)"
+modeLbl.Text                 = "Modes  [F7 to cycle]"
 modeLbl.TextColor3           = C.TextSub
 modeLbl.TextSize             = 12
 modeLbl.Font                 = Enum.Font.Gotham
 modeLbl.TextXAlignment       = Enum.TextXAlignment.Left
 modeLbl.Parent               = modeRow
 
-local modes = {"Rubberband", "Burst", "VelocityFreeze", "Ghost"}
+local modes = {"Precise", "Rubberband", "Burst", "VelocityFreeze", "Ghost"}
 local currentModeIndex = 1
 
 local modeValueBtn = Instance.new("TextButton")
-modeValueBtn.Size             = UDim2.new(0.41, 0, 0.70, 0)
-modeValueBtn.Position         = UDim2.new(0.57, 0, 0.15, 0)
+modeValueBtn.Size             = UDim2.new(0.45, 0, 0.70, 0)
+modeValueBtn.Position         = UDim2.new(0.53, 0, 0.15, 0)
 modeValueBtn.BackgroundColor3 = modeColors[lagMode]
-modeValueBtn.Text             = lagMode
+modeValueBtn.Text             = "[1/5] " .. lagMode
 modeValueBtn.TextColor3       = Color3.new(1, 1, 1)
-modeValueBtn.TextSize         = 12
+modeValueBtn.TextSize         = 11
 modeValueBtn.Font             = Enum.Font.GothamBold
 modeValueBtn.BorderSizePixel  = 0
 modeValueBtn.Parent           = modeRow
@@ -230,7 +236,7 @@ Instance.new("UICorner", modeValueBtn).CornerRadius = UDim.new(0, 7)
 
 -- Scrollable settings area
 local scrollFrame = Instance.new("ScrollingFrame")
-scrollFrame.Size                = UDim2.new(1, -28, 1, -172)
+scrollFrame.Size                = UDim2.new(1, -28, 1, -192)
 scrollFrame.Position            = UDim2.new(0, 14, 0, 104)
 scrollFrame.BackgroundTransparency = 1
 scrollFrame.BorderSizePixel     = 0
@@ -389,12 +395,12 @@ end
 
 -- ===== POPULATE SETTINGS =====
 
-createSection("⚙   MAIN LAG SETTINGS",   C.Accent)
+createSection("⚙  MAIN LAG SETTINGS",   C.Accent)
 createSetting("Lag Strength",         lagStrength,     1,    10,  function(v) lagStrength = v end)
 createSetting("Teleport Studs",        teleportStuds,   0.1,  15,  function(v) teleportStuds = v end)
 createSetting("Teleport Jitter (sec)", teleportJitter,  0.05, 2.0, function(v) teleportJitter = v end)
 
-createSection("🔀   EXTRA EFFECTS",        C.Orange)
+createSection("EXTRA EFFECTS",        C.Orange)
 createSetting("Velocity Amount",       velocityAmount,  5,    60,  function(v) velocityAmount = v end)
 createSetting("Rotation Degrees",      rotationDegrees, 0,    45,  function(v) rotationDegrees = v end)
 createSetting("Burst Count",           burstCount,      1,    8,   function(v) burstCount = math.floor(v) end)
@@ -403,19 +409,20 @@ createToggle("Fake Velocity",          fakeVelocity,    function(v) fakeVelocity
 createToggle("Fake Rotation",          fakeRotation,    function(v) fakeRotation = v end)
 createToggle("Burst Mode Override",    burstMode,       function(v) burstMode = v end)
 
-createSection("❄   FREEZE FEATURE",       C.Freeze)
+createSection("FREEZE FEATURE",       C.Freeze)
 createSetting("Freeze Duration (sec)", freezeDuration,  0.5,  20,  function(v) freezeDuration = v end)
 createSetting("Freeze Interval (sec)", freezeInterval,  0.5,  30,  function(v) freezeInterval = v end)
 createToggle("Enable Freeze",          freezeEnabled,   function(v) freezeEnabled = v end)
 
-createSection("🛠   MISC SETTINGS",        C.TextSub)
+createSection("MISC SETTINGS",        C.TextSub)
 createToggle("Auto Respawn Fix",       autoRespawnFix,  function(v) autoRespawnFix = v end)
+createToggle("Stealth Mode (GUI fade)",false,           function(v) stealthMode = v end)
 createToggle("Hotkey (" .. TOGGLE_KEY.Name .. ")", hotkeyEnabled, function(v) hotkeyEnabled = v end)
 
 -- ===== STATUS BAR =====
 local statusBar = Instance.new("Frame")
 statusBar.Size             = UDim2.new(1, -28, 0, 30)
-statusBar.Position         = UDim2.new(0, 14, 1, -38)
+statusBar.Position         = UDim2.new(0, 14, 1, -58)
 statusBar.BackgroundColor3 = C.Surface
 statusBar.BorderSizePixel  = 0
 statusBar.Parent           = contentFrame
@@ -433,19 +440,56 @@ local statusLabel = Instance.new("TextLabel")
 statusLabel.Size                 = UDim2.new(1, -28, 1, 0)
 statusLabel.Position             = UDim2.new(0, 22, 0, 0)
 statusLabel.BackgroundTransparency = 1
-statusLabel.Text                 = "Idle — Ready  •  Hotkey: " .. TOGGLE_KEY.Name
+statusLabel.Text                 = "Idle - Ready  •  " .. TOGGLE_KEY.Name .. " toggle  |  " .. CYCLE_KEY.Name .. " cycle"
 statusLabel.TextColor3           = C.TextSub
 statusLabel.TextSize             = 11
 statusLabel.Font                 = Enum.Font.Gotham
 statusLabel.TextXAlignment       = Enum.TextXAlignment.Left
 statusLabel.Parent               = statusBar
 
+-- Timer bar
+local timerBar = Instance.new("Frame")
+timerBar.Size             = UDim2.new(1, -28, 0, 22)
+timerBar.Position         = UDim2.new(0, 14, 1, -23)
+timerBar.BackgroundColor3 = C.Surface
+timerBar.BorderSizePixel  = 0
+timerBar.Parent           = contentFrame
+Instance.new("UICorner", timerBar).CornerRadius = UDim.new(0, 6)
+
+local timerLabel = Instance.new("TextLabel")
+timerLabel.Size                 = UDim2.new(1, 0, 1, 0)
+timerLabel.BackgroundTransparency = 1
+timerLabel.Text                 = "Session:  00:00"
+timerLabel.TextColor3           = C.TextDim
+timerLabel.TextSize             = 10
+timerLabel.Font                 = Enum.Font.Gotham
+timerLabel.Parent               = timerBar
+
 local function setStatus(text, color)
-    statusLabel.Text      = text
+    statusLabel.Text       = text
     statusLabel.TextColor3 = color or C.TextSub
     TweenService:Create(statusDot, TweenInfo.new(0.2), {
         BackgroundColor3 = color or C.TextDim
     }):Play()
+end
+
+local function startTimer()
+    if timerConn then timerConn:Disconnect() end
+    activeStart = tick()
+    timerLabel.TextColor3 = C.Green
+    timerConn = RunService.Heartbeat:Connect(function()
+        if not enabled then return end
+        local elapsed = math.floor(tick() - activeStart)
+        local mins    = math.floor(elapsed / 60)
+        local secs    = elapsed % 60
+        timerLabel.Text = string.format("Session:  %02d:%02d", mins, secs)
+    end)
+end
+
+local function stopTimer()
+    if timerConn then timerConn:Disconnect(); timerConn = nil end
+    timerLabel.Text       = "Session:  00:00"
+    timerLabel.TextColor3 = C.TextDim
 end
 
 -- ===== LAG ENGINE =====
@@ -456,10 +500,16 @@ local function stopFakeLag()
         task.cancel(lagThread)
         lagThread = nil
     end
+    -- Safety: always unanchor the root if Precise mode left it anchored
+    local char = player.Character
+    if char then
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if hrp then hrp.Anchored = false end
+    end
 end
 
 local function startFakeLag()
-    stopFakeLag() -- Ensure clean start; safe to call even if already nil
+    stopFakeLag() -- Ensure clean start
 
     lagThread = task.spawn(function()
         local nextFreezeTime = tick() + freezeInterval
@@ -484,22 +534,34 @@ local function startFakeLag()
                 humanoid.WalkSpeed = 0
                 humanoid.JumpPower = 0
                 hrp.AssemblyLinearVelocity = Vector3.zero
-                setStatus("❄  Frozen  (" .. freezeDuration .. "s)", C.Freeze)
+                setStatus("Frozen  (" .. freezeDuration .. "s)", C.Freeze)
                 task.wait(freezeDuration)
                 if humanoid and humanoid.Parent then
                     humanoid.WalkSpeed = origSpeed
                     humanoid.JumpPower = origJump
                 end
                 nextFreezeTime = tick() + freezeInterval
-                setStatus("⚡  ACTIVE — " .. lagMode, C.Green)
+                setStatus("ACTIVE - " .. lagMode, C.Green)
                 task.wait(0.05)
                 continue
             end
 
             local originalCFrame = hrp.CFrame
 
-            -- ── Rubberband / Burst ──
-            if lagMode == "Rubberband" or lagMode == "Burst" then
+            -- ── [1] Precise — anchor/unanchor cycle (clean position-freeze desync) ──
+            if lagMode == "Precise" then
+                local internalSpeed = lagStrength + 5
+                local freezeTime    = math.clamp(0.8 / internalSpeed, 0.05, 0.8)
+                local unfreezeTime  = math.clamp(0.2 / internalSpeed, 0.05, 0.5)
+                hrp.Anchored = true
+                task.wait(freezeTime)
+                hrp.Anchored = false
+                task.wait(unfreezeTime)
+                -- self-timed: skip baseWait at bottom
+                continue
+
+            -- ── [2] Rubberband / [3] Burst ──
+            elseif lagMode == "Rubberband" or lagMode == "Burst" then
                 local jitter = 1.15 + math.random() * 0.55
                 local ox = (math.random(-teleportStuds*100, teleportStuds*100) / 100) * jitter
                 local oz = (math.random(-teleportStuds*100, teleportStuds*100) / 100) * jitter
@@ -529,7 +591,7 @@ local function startFakeLag()
                     end
                 end
 
-            -- ── VelocityFreeze ──
+            -- ── [4] VelocityFreeze ──
             elseif lagMode == "VelocityFreeze" then
                 if fakeVelocity then
                     hrp.AssemblyLinearVelocity = Vector3.new(
@@ -541,9 +603,8 @@ local function startFakeLag()
                 task.wait(teleportJitter * (1.3 + math.random() * 1.1))
                 hrp.AssemblyLinearVelocity = Vector3.zero
 
-            -- ── Ghost (NEW) — simulates packet loss / position desync ──
+            -- ── [5] Ghost — simulates packet loss / position desync ──
             elseif lagMode == "Ghost" then
-                -- Blink character far up (server sees old position)
                 hrp.CFrame = originalCFrame + Vector3.new(0, 800, 0)
                 task.wait(0.04 + math.random() * 0.09)
                 hrp.CFrame = originalCFrame
@@ -564,6 +625,44 @@ local function startFakeLag()
     end)
 end
 
+-- ===== STEALTH MODE (fade on idle) =====
+mainFrame.MouseEnter:Connect(function()
+    if stealthMode then
+        TweenService:Create(mainFrame, TweenInfo.new(0.3), {BackgroundTransparency = 0}):Play()
+    end
+end)
+mainFrame.MouseLeave:Connect(function()
+    if stealthMode then
+        TweenService:Create(mainFrame, TweenInfo.new(0.6), {BackgroundTransparency = 0.7}):Play()
+    end
+end)
+
+-- ===== MODE CYCLING (shared logic) =====
+local function cycleMode()
+    currentModeIndex = currentModeIndex % #modes + 1
+    lagMode = modes[currentModeIndex]
+    modeValueBtn.Text = "[" .. currentModeIndex .. "/5] " .. lagMode
+    TweenService:Create(modeValueBtn, TweenInfo.new(0.15), {
+        BackgroundColor3 = modeColors[lagMode]
+    }):Play()
+    -- Sync side-effects per mode
+    if lagMode == "Precise" then
+        burstMode    = false
+        fakeVelocity = false
+    elseif lagMode == "Burst" then
+        burstMode    = true
+        fakeVelocity = false
+    elseif lagMode == "VelocityFreeze" then
+        fakeVelocity = true
+        burstMode    = false
+    else
+        burstMode    = false
+    end
+    if enabled then
+        setStatus("ACTIVE - " .. lagMode, C.Green)
+    end
+end
+
 -- ===== TOGGLE LOGIC =====
 local function toggleLag()
     enabled = not enabled
@@ -571,42 +670,23 @@ local function toggleLag()
         TweenService:Create(toggleBtn,  TweenInfo.new(0.2), {BackgroundColor3 = C.Green}):Play()
         TweenService:Create(accentLine, TweenInfo.new(0.3), {BackgroundColor3 = C.Green}):Play()
         TweenService:Create(mainStroke, TweenInfo.new(0.3), {Color = C.Green}):Play()
-        toggleBtn.Text = "⏹  DISABLE FAKE LAG  [" .. TOGGLE_KEY.Name .. "]"
-        setStatus("⚡  ACTIVE — " .. lagMode, C.Green)
+        toggleBtn.Text = "DISABLE FAKE LAG  [" .. TOGGLE_KEY.Name .. "]"
+        setStatus("ACTIVE - " .. lagMode, C.Green)
         startFakeLag()
+        startTimer()
     else
         TweenService:Create(toggleBtn,  TweenInfo.new(0.2), {BackgroundColor3 = C.Red}):Play()
         TweenService:Create(accentLine, TweenInfo.new(0.3), {BackgroundColor3 = C.Accent}):Play()
         TweenService:Create(mainStroke, TweenInfo.new(0.3), {Color = C.Border}):Play()
         toggleBtn.Text = "▶  ENABLE FAKE LAG  [" .. TOGGLE_KEY.Name .. "]"
-        setStatus("Idle — Stopped  •  Hotkey: " .. TOGGLE_KEY.Name, C.TextSub)
+        setStatus("Idle — Stopped  •  " .. TOGGLE_KEY.Name .. " toggle  |  " .. CYCLE_KEY.Name .. " cycle", C.TextSub)
         stopFakeLag()
+        stopTimer()
     end
 end
 
 toggleBtn.MouseButton1Click:Connect(toggleLag)
-
--- ===== MODE CYCLING =====
-modeValueBtn.MouseButton1Click:Connect(function()
-    currentModeIndex = currentModeIndex % #modes + 1
-    lagMode = modes[currentModeIndex]
-    modeValueBtn.Text = lagMode
-    TweenService:Create(modeValueBtn, TweenInfo.new(0.15), {
-        BackgroundColor3 = modeColors[lagMode]
-    }):Play()
-    -- Sync side-effects per mode
-    if lagMode == "Burst" then
-        burstMode = true
-    elseif lagMode == "VelocityFreeze" then
-        fakeVelocity = true
-        burstMode = false
-    else
-        burstMode = false
-    end
-    if enabled then
-        setStatus("⚡  ACTIVE — " .. lagMode, C.Green)
-    end
-end)
+modeValueBtn.MouseButton1Click:Connect(cycleMode)
 
 -- ===== MINIMIZE =====
 minimizeBtn.MouseButton1Click:Connect(function()
@@ -621,6 +701,7 @@ end)
 closeBtn.MouseButton1Click:Connect(function()
     enabled = false
     stopFakeLag()
+    stopTimer()
     local cx = mainFrame.Position.X.Offset + FRAME_W / 2
     local cy = mainFrame.Position.Y.Offset + FRAME_H / 2
     TweenService:Create(mainFrame, TweenInfo.new(0.18, Enum.EasingStyle.Quad), {
@@ -632,16 +713,18 @@ closeBtn.MouseButton1Click:Connect(function()
     screenGui:Destroy()
 end)
 
--- ===== HOTKEY =====
+-- ===== HOTKEYS =====
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
-    if hotkeyEnabled and input.KeyCode == TOGGLE_KEY then
+    if not hotkeyEnabled then return end
+    if input.KeyCode == TOGGLE_KEY then
         toggleLag()
+    elseif input.KeyCode == CYCLE_KEY then
+        cycleMode()
     end
 end)
 
--- ===== AUTO RESPAWN FIX (FIXED) =====
--- startFakeLag() always calls stopFakeLag() first, so it's safe to call directly.
+-- ===== AUTO RESPAWN FIX =====
 player.CharacterAdded:Connect(function()
     if autoRespawnFix and enabled then
         task.wait(1.2)
@@ -649,7 +732,7 @@ player.CharacterAdded:Connect(function()
     end
 end)
 
--- ===== DRAG (title bar only, no Draggable conflict) =====
+-- ===== DRAG (title bar only) =====
 local dragging  = false
 local dragStart = nil
 local startPos  = nil
